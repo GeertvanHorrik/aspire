@@ -30,6 +30,21 @@ public sealed class ProcessExecutionTests(ITestOutputHelper outputHelper)
 
         var stdoutBuilder = new StringBuilder();
         var stderrBuilder = new StringBuilder();
+        using var firstLineSeen = new ManualResetEventSlim();
+        using var releaseCallback = new ManualResetEventSlim();
+
+        var releaseTask = Task.Run(async () =>
+        {
+            if (!firstLineSeen.Wait(TimeSpan.FromSeconds(10)))
+            {
+                throw new TimeoutException("Timed out waiting for the first stdout line.");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            releaseCallback.Set();
+        });
+
+        var isFirstLine = true;
         using var execution = new ProcessExecution(
             process,
             NullLogger.Instance,
@@ -37,8 +52,18 @@ public sealed class ProcessExecutionTests(ITestOutputHelper outputHelper)
             {
                 StandardOutputCallback = line =>
                 {
+                    if (isFirstLine)
+                    {
+                        isFirstLine = false;
+                        firstLineSeen.Set();
+
+                        if (!releaseCallback.Wait(TimeSpan.FromSeconds(20)))
+                        {
+                            throw new TimeoutException("Timed out waiting to release the blocked stdout callback.");
+                        }
+                    }
+
                     stdoutBuilder.AppendLine(line);
-                    Thread.Sleep(5);
                 },
                 StandardErrorCallback = line => stderrBuilder.AppendLine(line)
             });
@@ -46,6 +71,7 @@ public sealed class ProcessExecutionTests(ITestOutputHelper outputHelper)
         Assert.True(execution.Start());
 
         var exitCode = await execution.WaitForExitAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(30));
+        await releaseTask.WaitAsync(TimeSpan.FromSeconds(1));
 
         Assert.Equal(0, exitCode);
         Assert.True(string.IsNullOrWhiteSpace(stderrBuilder.ToString()));
