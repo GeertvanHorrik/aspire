@@ -143,14 +143,7 @@ internal sealed class DockerContainerRuntime : ContainerRuntimeBase<DockerContai
 
     public override async Task<bool> CheckIfRunningAsync(CancellationToken cancellationToken)
     {
-        // First check if Docker daemon is running using the same check that DCP uses
-        if (!await CheckDockerDaemonAsync(cancellationToken).ConfigureAwait(false))
-        {
-            return false;
-        }
-
-        // Then check if Docker buildx is available
-        return await CheckDockerBuildxAsync(cancellationToken).ConfigureAwait(false);
+        return await CheckDockerDaemonAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<bool> CheckDockerDaemonAsync(CancellationToken cancellationToken)
@@ -161,25 +154,6 @@ internal sealed class DockerContainerRuntime : ContainerRuntimeBase<DockerContai
                 "container ls -n 1",
                 "Docker daemon is not running. Exit code: {ExitCode}.",
                 "Docker daemon is running.",
-                cancellationToken,
-                Array.Empty<object>()).ConfigureAwait(false);
-            
-            return exitCode == 0;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private async Task<bool> CheckDockerBuildxAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            var exitCode = await ExecuteContainerCommandWithExitCodeAsync(
-                "buildx version",
-                "Docker buildx version failed with exit code {ExitCode}.",
-                "Docker buildx is available and running.",
                 cancellationToken,
                 Array.Empty<object>()).ConfigureAwait(false);
             
