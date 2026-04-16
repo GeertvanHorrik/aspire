@@ -145,50 +145,27 @@ internal static class CliE2EAutomatorHelpers
         switch (strategy.Mode)
         {
             case CliInstallMode.LocalHive:
-                // Extract the localhive archive into ~/.aspire
-                await auto.TypeAsync("mkdir -p ~/.aspire && tar -xzf /tmp/aspire-localhive.tar.gz -C ~/.aspire 2>/dev/null");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptAsync(counter, TimeSpan.FromSeconds(30));
-                await auto.TypeAsync("export PATH=~/.aspire/bin:$PATH");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptAsync(counter);
-                // Set the channel to 'local' so the CLI finds the hive packages
-                await auto.TypeAsync("aspire config set channel local -g");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptAsync(counter);
-                // Set SDK version from the hive packages so aspire new uses the local version
-                await auto.TypeAsync("SDK_VER=$(ls ~/.aspire/hives/local/packages/Aspire.Hosting.*.nupkg 2>/dev/null | head -1 | sed 's/.*Aspire\\.Hosting\\.//;s/\\.nupkg//') && aspire config set sdk.version \"$SDK_VER\" -g");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptAsync(counter);
+                await auto.ExtractLocalHiveArchiveAsync("/tmp/aspire-localhive.tar.gz", counter);
+                await auto.RunCommandAsync("export PATH=~/.aspire/bin:$PATH", counter);
+                await auto.ConfigureLocalHiveAsync(counter);
                 break;
 
             case CliInstallMode.PullRequest:
                 var prNumber = CliE2ETestHelpers.GetRequiredPrNumber();
-                await auto.TypeAsync($"/opt/aspire-scripts/get-aspire-cli-pr.sh {GetPullRequestInstallArgs(prNumber)}");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptFailFastAsync(counter, TimeSpan.FromSeconds(300));
-                await auto.TypeAsync("export PATH=~/.aspire/bin:~/.aspire:$PATH");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptAsync(counter);
+                await auto.RunCommandFailFastAsync($"/opt/aspire-scripts/get-aspire-cli-pr.sh {GetPullRequestInstallArgs(prNumber)}", counter, TimeSpan.FromSeconds(300));
+                await auto.RunCommandAsync("export PATH=~/.aspire/bin:~/.aspire:$PATH", counter);
                 break;
 
             case CliInstallMode.InstallScript:
-                await auto.TypeAsync($"/opt/aspire-scripts/get-aspire-cli.sh{GetInstallScriptArgs(strategy)}");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptFailFastAsync(counter, TimeSpan.FromSeconds(120));
-                await auto.TypeAsync("export PATH=~/.aspire/bin:$PATH");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptAsync(counter);
+                await auto.RunCommandFailFastAsync($"/opt/aspire-scripts/get-aspire-cli.sh{GetInstallScriptArgs(strategy)}", counter, TimeSpan.FromSeconds(120));
+                await auto.RunCommandAsync("export PATH=~/.aspire/bin:$PATH", counter);
                 break;
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(strategy), strategy.Mode, "Unknown install mode");
         }
 
-        // Log the installed version for debugging — visible in asciinema recordings
-        await auto.TypeAsync("aspire --version");
-        await auto.EnterAsync();
-        await auto.WaitForSuccessPromptAsync(counter);
+        await auto.LogInstalledAspireCliVersionAsync(counter);
     }
 
     /// <summary>
@@ -203,16 +180,9 @@ internal static class CliE2EAutomatorHelpers
         {
             case CliInstallMode.LocalHive:
                 var archivePath = QuoteBashArg(strategy.ArchivePath ?? throw new InvalidOperationException("LocalHive strategy is missing the archive path."));
-                await auto.TypeAsync($"mkdir -p ~/.aspire && tar -xzf {archivePath} -C ~/.aspire 2>/dev/null");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptAsync(counter, TimeSpan.FromSeconds(30));
+                await auto.ExtractLocalHiveArchiveAsync(archivePath, counter);
                 await auto.SourceAspireCliEnvironmentAsync(counter);
-                await auto.TypeAsync("aspire config set channel local -g");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptAsync(counter);
-                await auto.TypeAsync("SDK_VER=$(ls ~/.aspire/hives/local/packages/Aspire.Hosting.*.nupkg 2>/dev/null | head -1 | sed 's/.*Aspire\\.Hosting\\.//;s/\\.nupkg//') && aspire config set sdk.version \"$SDK_VER\" -g");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptAsync(counter);
+                await auto.ConfigureLocalHiveAsync(counter);
                 break;
 
             case CliInstallMode.PullRequest:
@@ -223,9 +193,7 @@ internal static class CliE2EAutomatorHelpers
 
             case CliInstallMode.InstallScript:
                 var getAspireCliScript = QuoteBashArg(Path.Combine(CliE2ETestHelpers.GetRepoRoot(), "eng", "scripts", "get-aspire-cli.sh"));
-                await auto.TypeAsync($"bash {getAspireCliScript}{GetInstallScriptArgs(strategy)}");
-                await auto.EnterAsync();
-                await auto.WaitForSuccessPromptFailFastAsync(counter, TimeSpan.FromSeconds(120));
+                await auto.RunCommandFailFastAsync($"bash {getAspireCliScript}{GetInstallScriptArgs(strategy)}", counter, TimeSpan.FromSeconds(120));
                 await auto.SourceAspireCliEnvironmentAsync(counter);
                 break;
 
@@ -233,9 +201,7 @@ internal static class CliE2EAutomatorHelpers
                 throw new ArgumentOutOfRangeException(nameof(strategy), strategy.Mode, "Unknown install mode");
         }
 
-        await auto.TypeAsync("aspire --version");
-        await auto.EnterAsync();
-        await auto.WaitForSuccessPromptAsync(counter);
+        await auto.LogInstalledAspireCliVersionAsync(counter);
     }
 
     /// <summary>
@@ -355,9 +321,7 @@ internal static class CliE2EAutomatorHelpers
         SequenceCounter counter)
     {
         var command = $"curl -fsSL https://raw.githubusercontent.com/microsoft/aspire/main/eng/scripts/get-aspire-cli-pr.sh | bash -s -- {GetPullRequestInstallArgs(prNumber)}";
-        await auto.TypeAsync(command);
-        await auto.EnterAsync();
-        await auto.WaitForSuccessPromptFailFastAsync(counter, TimeSpan.FromSeconds(300));
+        await auto.RunCommandFailFastAsync(command, counter, TimeSpan.FromSeconds(300));
     }
 
     /// <summary>
@@ -367,9 +331,7 @@ internal static class CliE2EAutomatorHelpers
         this Hex1bTerminalAutomator auto,
         SequenceCounter counter)
     {
-        await auto.TypeAsync("export PATH=~/.aspire/bin:$PATH ASPIRE_PLAYGROUND=true TERM=xterm DOTNET_CLI_TELEMETRY_OPTOUT=true DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true DOTNET_GENERATE_ASPNET_CERTIFICATE=false");
-        await auto.EnterAsync();
-        await auto.WaitForSuccessPromptAsync(counter);
+        await auto.RunCommandAsync("export PATH=~/.aspire/bin:$PATH ASPIRE_PLAYGROUND=true TERM=xterm DOTNET_CLI_TELEMETRY_OPTOUT=true DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true DOTNET_GENERATE_ASPNET_CERTIFICATE=false", counter);
     }
 
     /// <summary>
@@ -441,9 +403,7 @@ internal static class CliE2EAutomatorHelpers
         SequenceCounter counter)
     {
         var command = $"ref=$(gh api repos/microsoft/aspire/pulls/{prNumber} --jq '.head.sha') && curl -fsSL https://raw.githubusercontent.com/microsoft/aspire/$ref/eng/scripts/get-aspire-cli-pr.sh | bash -s -- {GetPullRequestInstallArgs(prNumber)}";
-        await auto.TypeAsync(command);
-        await auto.EnterAsync();
-        await auto.WaitForSuccessPromptFailFastAsync(counter, TimeSpan.FromSeconds(300));
+        await auto.RunCommandFailFastAsync(command, counter, TimeSpan.FromSeconds(300));
     }
 
     internal static string GetPullRequestInstallArgs(int prNumber)
@@ -463,9 +423,7 @@ internal static class CliE2EAutomatorHelpers
         this Hex1bTerminalAutomator auto,
         SequenceCounter counter)
     {
-        await auto.TypeAsync("export PATH=~/.aspire/bin:~/.aspire:$PATH ASPIRE_PLAYGROUND=true TERM=xterm DOTNET_CLI_TELEMETRY_OPTOUT=true DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true DOTNET_GENERATE_ASPNET_CERTIFICATE=false");
-        await auto.EnterAsync();
-        await auto.WaitForSuccessPromptAsync(counter);
+        await auto.RunCommandAsync("export PATH=~/.aspire/bin:~/.aspire:$PATH ASPIRE_PLAYGROUND=true TERM=xterm DOTNET_CLI_TELEMETRY_OPTOUT=true DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true DOTNET_GENERATE_ASPNET_CERTIFICATE=false", counter);
     }
 
     /// <summary>
@@ -475,9 +433,7 @@ internal static class CliE2EAutomatorHelpers
         this Hex1bTerminalAutomator auto,
         SequenceCounter counter)
     {
-        await auto.TypeAsync("clear");
-        await auto.EnterAsync();
-        await auto.WaitForSuccessPromptAsync(counter);
+        await auto.RunCommandAsync("clear", counter);
     }
 
     /// <summary>
@@ -514,9 +470,52 @@ internal static class CliE2EAutomatorHelpers
         SequenceCounter counter)
     {
         var command = $"curl -fsSL https://raw.githubusercontent.com/microsoft/aspire/main/eng/scripts/get-aspire-cli.sh | bash -s -- --version \"{version}\"";
+        await auto.RunCommandFailFastAsync(command, counter, TimeSpan.FromSeconds(300));
+    }
+
+    private static async Task ExtractLocalHiveArchiveAsync(
+        this Hex1bTerminalAutomator auto,
+        string archivePath,
+        SequenceCounter counter)
+    {
+        await auto.RunCommandAsync($"mkdir -p ~/.aspire && tar -xzf {archivePath} -C ~/.aspire 2>/dev/null", counter, TimeSpan.FromSeconds(30));
+    }
+
+    private static async Task ConfigureLocalHiveAsync(
+        this Hex1bTerminalAutomator auto,
+        SequenceCounter counter)
+    {
+        await auto.RunCommandAsync("aspire config set channel local -g", counter);
+        await auto.RunCommandAsync("SDK_VER=$(ls ~/.aspire/hives/local/packages/Aspire.Hosting.*.nupkg 2>/dev/null | head -1 | sed 's/.*Aspire\\.Hosting\\.//;s/\\.nupkg//') && aspire config set sdk.version \"$SDK_VER\" -g", counter);
+    }
+
+    private static async Task LogInstalledAspireCliVersionAsync(
+        this Hex1bTerminalAutomator auto,
+        SequenceCounter counter)
+    {
+        await auto.RunCommandAsync("aspire --version", counter);
+    }
+
+    private static async Task RunCommandAsync(
+        this Hex1bTerminalAutomator auto,
+        string command,
+        SequenceCounter counter,
+        TimeSpan? timeout = null)
+    {
         await auto.TypeAsync(command);
         await auto.EnterAsync();
-        await auto.WaitForSuccessPromptFailFastAsync(counter, timeout: TimeSpan.FromSeconds(300));
+        await auto.WaitForSuccessPromptAsync(counter, timeout);
+    }
+
+    private static async Task RunCommandFailFastAsync(
+        this Hex1bTerminalAutomator auto,
+        string command,
+        SequenceCounter counter,
+        TimeSpan timeout)
+    {
+        await auto.TypeAsync(command);
+        await auto.EnterAsync();
+        await auto.WaitForSuccessPromptFailFastAsync(counter, timeout);
     }
 
     /// <summary>
